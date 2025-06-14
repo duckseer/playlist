@@ -14,6 +14,7 @@
 #include <vector>
 #include <filesystem>
 #include <fstream>
+#include <unordered_set>
 namespace fs = std::filesystem;
 
 
@@ -39,8 +40,9 @@ Fl_Input *replace_base_dir;
 Fl_Input *search_file;
 Fl_Shared_Image *image = nullptr;
 Fl_Check_Browser *audio_file_check_browser; // 多选框控件指针
-std::vector<AudioFile *> all_audio_files;
-std::vector<AudioFile *> show_audio_files;
+std::vector<AudioFile *> all_audio_files;// 用于存储所有音频文件指针
+std::vector<AudioFile *> show_audio_files;// 用于存储需要显示的文件指针
+std::unordered_set<std::string> unique_paths;// 用于去重
 
 void show_choose_base_dir(Fl_Widget *, void *);
 
@@ -50,9 +52,15 @@ void save_browser_selected_items();
 
 void to_file_list_callback(Fl_Widget *, void *);
 
+void import_callback(Fl_Widget *, void *);
+
 void export_callback(Fl_Widget *, void *);
 
 void show_choose_replace_base_dir(Fl_Widget *, void *);
+
+void insert_to_audio_files(const std::string & path,bool is_selected);
+
+void reflash_audio_file_check_browser();
 
 int main(const int argc, char *argv[]) {
     Fl_File_Icon *icon;
@@ -87,7 +95,9 @@ int main(const int argc, char *argv[]) {
 
         auto *to_file_list_button = new Fl_Button(400, 400, 25, 25, "->");
         to_file_list_button->callback(to_file_list_callback);
-        auto *export_button = new Fl_Button(10, 800, 40, 25, "导出");
+        auto *import_button = new Fl_Button(10, 800, 40, 25, "导入");
+        import_button->callback(import_callback);
+        auto *export_button = new Fl_Button(60, 800, 40, 25, "导出");
         export_button->callback(export_callback);
     }
     left_group->end();
@@ -171,9 +181,7 @@ void scan_dir(const fs::path &dir, const int depth = 0) {
                     // 检查是否是音频文件扩展名
                     if (ext == ".mp3" || ext == ".wav" || ext == ".flac" ||
                         ext == ".aac" || ext == ".ogg" || ext == ".m4a") {
-                        auto *file = new AudioFile{fs::path(path), false};
-                        all_audio_files.emplace_back(file);
-                        show_audio_files.emplace_back(file);
+                        insert_to_audio_files(path.generic_string(),false);
                     }
                 }
             }
@@ -191,15 +199,18 @@ void show_choose_base_dir(Fl_Widget *, void *) {
     if (file_chooser.show() != 0) return; // 用户取消选择
     // 2. 获取用户选择的文件路径
     const char *filename = file_chooser.filename();
-    all_audio_files.clear();
     base_dir->value(filename);
     scan_dir(filename);
-    for (const auto &file: all_audio_files) {
-        audio_file_check_browser->add(file->path.filename().string().c_str());
+    reflash_audio_file_check_browser();
+}
+
+void reflash_audio_file_check_browser() {
+    audio_file_check_browser->clear();
+    for (const auto &file: show_audio_files) {
+        audio_file_check_browser->add(file->path.filename().string().c_str(),file->is_selected);
     }
     audio_file_check_browser->redraw();
 }
-
 void show_choose_replace_base_dir(Fl_Widget *, void *) {
     // 1. 弹出文件夹选择对话框
     Fl_Native_File_Chooser file_chooser;
@@ -223,6 +234,66 @@ void to_file_list_callback(Fl_Widget *, void *) {
     }
     files->redraw();
 }
+
+void import_callback(Fl_Widget *, void *) {
+    // 1. 弹出文件选择对话框
+    Fl_Native_File_Chooser file_chooser;
+    file_chooser.title("选择导入文件");
+    file_chooser.type(Fl_Native_File_Chooser::BROWSE_FILE);
+    file_chooser.filter("M3U Playlist\t*.m3u");
+    if (file_chooser.show() != 0) return;
+    // 2. 获取用户选择的文件路径
+    const char *filename = file_chooser.filename();
+    // 3. 读取文件内容
+    if (std::ifstream infile(filename); infile.is_open()) {
+        std::string line;
+        while (std::getline(infile, line)) {
+            if (line.empty()) continue;
+            // 统一转换为UNIX风格路径（使用正斜杠）
+            std::string path = fs::path(line).lexically_normal().generic_string();
+            fs::path base_path = fs::path(base_dir->value()).lexically_normal().generic_string();
+            fs::path replace_path = fs::path(replace_base_dir->value()).lexically_normal().generic_string();
+            // 如果需要替换路径前缀
+            if (!replace_path.empty() && !base_path.empty()) {
+                if (size_t pos = path.find(replace_path.string()); pos != std::string::npos) {
+                    path.replace(pos, replace_path.string().length(), base_path.string());
+                }
+            }
+            // 检查文件是否存在
+            if (fs::exists(path)) {
+                insert_to_audio_files(path, true);
+            }
+        }
+        search_callback(nullptr, nullptr);
+        to_file_list_callback(nullptr, nullptr);
+        infile.close();
+        fl_alert("导入成功: %s", filename);
+    } else {
+        fl_alert("导入失败！无法打开文件");
+    }
+}
+
+void insert_to_audio_files(const std::string& path, const bool is_selected = false) {
+    // 尝试插入路径（检查是否重复）
+    if (const std::string abs_path = fs::canonical(path).string(); unique_paths.insert(abs_path).second) {
+        // 新文件 - 创建并添加
+        auto* file = new AudioFile{fs::path(path), is_selected};
+        all_audio_files.emplace_back(file);
+        show_audio_files.emplace_back(file);
+    } else {
+        // 文件已存在 - 更新选中状态
+        const auto it = std::ranges::find_if(all_audio_files,
+                                       [&abs_path](const AudioFile* file) {
+                                           return fs::canonical(file->path).string() == abs_path;
+                                       });
+
+        if (it != all_audio_files.end()) {
+            (*it)->is_selected = is_selected;
+        }
+        reflash_audio_file_check_browser();
+    }
+}
+
 
 void export_callback(Fl_Widget *widget, void *data) {
     // 1. 弹出文件保存对话框

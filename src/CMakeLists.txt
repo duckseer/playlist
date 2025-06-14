@@ -23,7 +23,3 @@ target_link_libraries(
         comctl32
         GdiPlus
 )
-# 构建后自动压缩
-add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
-        COMMAND upx --best $<TARGET_FILE:${PROJECT_NAME}>
-)
