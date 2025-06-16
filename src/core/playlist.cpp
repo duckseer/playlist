@@ -6,7 +6,6 @@
 
 #include <unordered_map>
 
-#include "core/globals.h"
 #include "FL/fl_ask.H"
 
 std::vector<AudioFile *> all_audio_files;// 用于存储所有音频文件指针

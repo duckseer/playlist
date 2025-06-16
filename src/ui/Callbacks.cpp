@@ -6,7 +6,6 @@
 
 #include <string>
 
-#include "core/globals.h"
 #include "ui/Window.h"
 #include "FL/Fl_Native_File_Chooser.H"
 #include "utils/file_utils.h"

@@ -4,7 +4,6 @@
 
 #include "ui/Window.h"
 
-#include "core/globals.h"
 #include "core/playlist.h"
 #include "FL/Fl_Button.H"
 #include "FL/Fl_Double_Window.H"
