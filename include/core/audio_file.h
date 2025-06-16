@@ -14,7 +14,7 @@ class AudioFile {
 public:
     fs::path path;
     std::string path_str;
-    mutable bool is_selected = false;
+    bool is_selected = false;
 
     explicit AudioFile(fs::path p, bool selected = false);
 
