@@ -7,6 +7,7 @@
 
 #include <string>
 
+#include "core/audio_file.h"
 #include "FL/Fl_Widget.H"
 
 class Callbacks {

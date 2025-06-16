@@ -17,4 +17,8 @@ class file_utils {
 
 void scan_dir(const fs::path &dir, int depth);
 
+void import_audio_files(const char *filename);
+
+void export_audio_files(const char *filename);
+
 #endif //FILE_UTILS_H

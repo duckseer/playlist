@@ -4,16 +4,20 @@
 
 #include "ui/Callbacks.h"
 
-#include <cstring>
-#include <fstream>
 #include <string>
 
 #include "core/globals.h"
 #include "ui/Window.h"
 #include "FL/Fl_Native_File_Chooser.H"
 #include "utils/file_utils.h"
+#include <filesystem>
+#include <fstream>
+
+#include "core/playlist.h"
+namespace fs = std::filesystem;
 
 void show_choose_base_dir(Fl_Widget *, void *) {
+    save_browser_selected_items();
     // 1. 弹出文件保存对话框
     Fl_Native_File_Chooser file_chooser;
     file_chooser.title("选择需要扫描的文件夹");
@@ -68,35 +72,8 @@ void import_callback(Fl_Widget *, void *) {
     file_chooser.type(Fl_Native_File_Chooser::BROWSE_FILE);
     file_chooser.filter("M3U Playlist\t*.m3u");
     if (file_chooser.show() != 0) return;
-    // 2. 获取用户选择的文件路径
-    const char *filename = file_chooser.filename();
-    // 3. 读取文件内容
-    if (std::ifstream infile(filename); infile.is_open()) {
-        std::string line;
-        while (std::getline(infile, line)) {
-            if (line.empty()) continue;
-            // 统一转换为UNIX风格路径（使用正斜杠）
-            std::string path = fs::path(line).lexically_normal().generic_string();
-            fs::path base_path = fs::path(base_dir->value()).lexically_normal().generic_string();
-            fs::path replace_path = fs::path(replace_base_dir->value()).lexically_normal().generic_string();
-            // 如果需要替换路径前缀
-            if (!replace_path.empty() && !base_path.empty()) {
-                if (size_t pos = path.find(replace_path.string()); pos != std::string::npos) {
-                    path.replace(pos, replace_path.string().length(), base_path.string());
-                }
-            }
-            // 检查文件是否存在
-            if (fs::exists(path)) {
-                insert_to_audio_files(path, true);
-            }
-        }
-        search_callback(nullptr, nullptr);
-        to_file_list_callback(nullptr, nullptr);
-        infile.close();
-        fl_alert("导入成功: %s", filename);
-    } else {
-        fl_alert("打开失败: %s (错误: %s)", filename, std::strerror(errno));
-    }
+    save_browser_selected_items();
+    import_audio_files(file_chooser.filename());
 }
 
 
@@ -108,33 +85,8 @@ void export_callback(Fl_Widget *widget, void *data) {
     file_chooser.preset_file("default_playlist.m3u");
     file_chooser.filter("M3U Playlist\t*.m3u");
     if (file_chooser.show() != 0) return;
-    // 2. 获取用户选择的文件路径
-    const char *filename = file_chooser.filename();
-    // 3. 写入文件
-    if (std::ofstream outfile(filename); outfile.is_open()) {
-        save_browser_selected_items();
-        // 统一转换为UNIX风格路径（使用正斜杠）
-        fs::path base_path = fs::path(base_dir->value()).lexically_normal().generic_string();
-        fs::path replace_path = fs::path(replace_base_dir->value()).lexically_normal().generic_string();
-        bool need_replace = !replace_path.empty();
-        for (const auto &file: all_audio_files) {
-            if (file->is_selected) {
-                // 统一当前路径的分隔符
-                std::string path = fs::path(file->path).lexically_normal().generic_string();
-                // 替换路径前缀（现在两边都是正斜杠）
-                if (need_replace) {
-                    if (size_t pos = path.find(base_path.string()); pos != std::string::npos) {
-                        path.replace(pos, base_path.string().length(), replace_path.string());
-                    }
-                }
-                outfile << path << "\n";
-            }
-        }
-        outfile.close();
-        fl_alert("导出成功: %s", filename);
-    } else {
-        fl_alert("导出失败！无法创建文件");
-    }
+    export_audio_files(file_chooser.filename());
+
 }
 
 void save_browser_selected_items() {
